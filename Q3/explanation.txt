@@ -1,0 +1,2 @@
+Explanation: different scales allow for better visualization. What might be indiscernable data in a linear scale might become much more enlightening if given a different 
+perspective. You can see the inverse of that happening in the linechart graphs, where the log scale makes everything much more confusing/bunched up. 

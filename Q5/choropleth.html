@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+	<!-- add title -->
+	
+    <!-- import required libraries here -->
+
+    <script type="text/javascript" src="../lib/d3.v5.min.js"></script>
+    <script type="text/javascript" src="../lib/d3-dsv.min.js"></script>
+    <script type="text/javascript" src="../lib/d3-tip.min.js"></script>
+    <script type="text/javascript" src="../lib/d3-geo-projection.v2.min.js"></script>
+	
+	<style>
+		/* define CSS rules here */
+        div {
+            width: 1200px;
+            height: 600px;
+        }
+
+        .d3-tip {
+            width:325px;
+            height:50px;
+            line-height: 1;
+            font-weight: bold;
+            background:rgba(0, 0, 0, 1);
+            color: #fff;
+        }
+	
+	</style>
+</head>
+
+<body>
+    <!-- Add heading for the visualization -->
+
+    <h2>Average Rating of Board Games Across the World</h2>
+	
+	<!-- Create dropdown element here. Options should be added after reading in game file, they should not be created here.-->
+
+    <label for="game_dropdown">Select Board Game:</label>
+
+    <select name="game_dropdown" id="game_dropdown"></select>
+
+	<!-- append visualization svg to this div-->
+    <div id="choropleth"></div>
+
+    <script>
+	
+		// enter code to define margin and dimensions for svg
+
+        let padding = {
+            top: 100,
+            right: 200,
+            bottom: 100,
+            left: 100
+
+        };
+
+        let svg_width = 1200;
+        let svg_height = 600;
+		
+		// enter code to create svg
+
+        let svg = d3.select("#choropleth")
+            .append("svg")
+            .attr("width", 1200)
+            .attr("height", 600)
+		
+		// enter code to create color scale
+
+        let colors = ['#fed98e', '#fe9929', '#d95f0e', '#993404']
+
+		// enter code to define tooltip
+
+        let tip = d3.tip()
+            .attr('class', 'd3-tip')
+            .html(function(d) {
+
+                return 'Country: ' + d.name
+
+            })
+            .offset(function (d) { return [((d.bbox.height / 2) - 100), 0]})
+
+        let tip2 = d3.tip()
+            .attr('class', 'd3-tip')
+            .html(function(d) {
+
+                return 'Average Rating: ' + d.avg_rating
+
+            })
+            .offset(function (d) { return [((d.bbox.height / 2) - 75), 0]})
+
+        let tip3 = d3.tip()
+            .attr('class', 'd3-tip')
+            .html(function(d) {
+
+                return 'Number of Users: ' + d.num_users
+
+            })
+            .offset(function (d) { return [((d.bbox.height / 2) - 50), 0]})
+
+        let tip4 = d3.tip()
+            .attr('class', 'd3-tip')
+            .html(function(d) {
+
+                return 'Game: ' + d.game
+
+            })
+            .offset(function (d) { return [((d.bbox.height / 2) - 25), 0]})
+
+        svg.call(tip)
+        svg.call(tip2)
+        svg.call(tip3)
+        svg.call(tip4)
+
+		// enter code to define projection and path required for Choropleth
+
+        let game_data_path = 'ratings-by-country.csv'
+        let world_path = "world_countries.json"
+
+		// define any other global variables 
+
+        Promise.all(
+
+            [d3.csv(game_data_path, function (d) {
+                return {
+                    game: d['Game'],
+                    country: d['Country'],
+                    num_users: parseInt(d['Number of Users']),
+                    avg_rating: parseFloat(d['Average Rating'])
+                }
+            }),
+                d3.json(world_path)]  // Read data, put into value[0] and value[1]
+
+        ).then(value => {
+
+            // enter code to call ready() with required arguments
+            ready(1, value[0], value[1])
+
+        });
+		
+		// this function should be called once the data from files have been read
+		// world: topojson from world_countries.json
+		// gameData: data from ratings-by-country.csv
+		
+        function ready(error, gameData, world) {
+            // enter code to extract all unique games from gameData
+
+            let game_list = new Set()
+
+            gameData.forEach(function (d) {
+
+                game_list.add(d.game)
+
+            });
+
+            game_list = [...game_list].sort()
+
+            // enter code to append the game options to the dropdown
+
+            for (let i = 0; i < game_list.length; i = i + 1) {
+
+                let dropdown = document.getElementById("game_dropdown");
+                let option = document.createElement("option");
+                option.text = game_list[i];
+                dropdown.add(option);
+
+            }
+			
+            // event listener for the dropdown. Update choropleth and legend when selection changes. Call createMapAndLegend() with required arguments.
+
+            let select = document.getElementById('game_dropdown');
+            select.onchange = function() {
+                let game_name = select.value
+
+                svg.selectAll("*").remove()
+
+                createMapAndLegend(world, gameData, game_name)
+
+            }
+			
+            // create Choropleth with default option. Call createMapAndLegend() with required arguments.
+
+            createMapAndLegend(world, gameData, '6 nimmt!')
+
+        }
+
+		// this function should create a Choropleth and legend using the world and gameData arguments for a selectedGame
+		// also use this function to update Choropleth and legend when a different game is selected from the dropdown
+        function createMapAndLegend(world, gameData, selectedGame){
+
+            var projection = d3.geoMercator()
+                .scale(120)
+                .translate(
+                    [(svg_width - padding.left - padding.right) / 2,
+                    (svg_height- padding.top - padding.bottom) / 0.925]);
+
+            avg_rating_list = []
+
+            gameData.forEach(function (d) {
+
+                if (d.game === selectedGame) {
+
+                    avg_rating_list.push(d.avg_rating)
+
+                }
+
+            })
+
+            avg_rating_list.sort(function (a, b) { return a - b})
+
+            let color_quantile = d3.scaleQuantile()
+                .domain(avg_rating_list)
+                .range(colors)
+
+            svg.append("g")
+                .selectAll("path")
+                .data(world.features)
+                .enter()
+                .append("path")
+                .attr("d", d3.geoPath()
+                    .projection(projection)
+                )
+                .attr("fill", function (d) {
+
+                    let scale_value = 0
+
+                    for (let i = 0; i < gameData.length; i = i + 1) {
+
+                        if (gameData[i].country === d.properties.name && gameData[i].game === selectedGame) {
+
+                            scale_value = gameData[i].avg_rating
+
+                        }
+
+                    }
+
+                    if (scale_value === 0) {
+
+                        return '#808080'
+
+                    } else {
+
+                        return color_quantile(scale_value)
+
+                    }
+
+                })
+                .attr("class", function(){ return "Country" } )
+                .on('mouseover', function(d) {
+
+                    let tip_object = {
+                        bbox: this.getBBox(),
+                        name: d.properties.name,
+                        game: selectedGame,
+                        avg_rating: 'Unavailable',
+                        num_users: 'Unavailable'
+                    }
+
+                    for (let i = 0; i < gameData.length; i = i + 1) {
+
+                        if (gameData[i].country === d.properties.name && gameData[i].game === selectedGame) {
+
+                            tip_object = {
+                                bbox: this.getBBox(),
+                                name: d.properties.name,
+                                game: selectedGame,
+                                avg_rating: gameData[i].avg_rating,
+                                num_users:  gameData[i].num_users
+                            }
+
+                        }
+
+                    }
+
+                    tip.show(tip_object)
+                    tip2.show(tip_object)
+                    tip3.show(tip_object)
+                    tip4.show(tip_object)
+
+                })
+                .on('mouseout', function(d) {
+                    tip.hide(d)
+                    tip2.hide(d)
+                    tip3.hide(d)
+                    tip4.hide(d)
+                })
+
+
+            let modified_color_list = ['#808080', '#fed98e', '#fe9929', '#d95f0e', '#993404']
+            let modified_text_list = [
+                'Data Not Available',
+                avg_rating_list[0] + ' <= Average User Score < ' + avg_rating_list[Math.floor(((avg_rating_list.length) / 4))],
+                avg_rating_list[Math.floor(((avg_rating_list.length) / 4))] + ' <= Average User Score < ' +  avg_rating_list[Math.floor(((avg_rating_list.length) / 2))],
+                avg_rating_list[Math.floor(((avg_rating_list.length) / 2))] + ' <= Average User Score < ' +  avg_rating_list[Math.floor((3 * (avg_rating_list.length) / 4))],
+                avg_rating_list[Math.floor((3 * (avg_rating_list.length) / 4))] + ' <= Average User Score <= ' +  avg_rating_list[avg_rating_list.length -1],
+                '9 <= Average User Score < 10']
+
+            for (let i = 0; i < modified_color_list.length; i = i + 1) {
+
+                svg.append("text")
+                    .attr("transform", "translate(" + (svg_width - 250) + "," + ((svg_height - 350) + (i * 25)) + ")")
+                    .attr("text-anchor", "start")
+                    .text(modified_text_list[i]);
+
+                svg.append("circle")
+                    .attr("transform", "translate(" + (svg_width - 250 - 10) + "," + ((svg_height - 355) + (i * 25)) + ")")
+                    .attr("fill", modified_color_list[i])
+                    .attr("r", 5)
+
+            }
+
+            svg.append("text")
+                .attr("x", 0)
+                .attr("y", 25)
+                .text("sallegri3");
+			
+        }
+    </script>
+
+</body>
+
+</html>
